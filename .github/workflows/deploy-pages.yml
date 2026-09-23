@@ -1,1 +1,3 @@
-
+output: 'export'
+basePath: '/google-style-search-engine'
+images: { unoptimized: true }
