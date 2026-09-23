@@ -4,8 +4,8 @@ import { useState } from 'react';
 
 const quickLinks = ['Weather', 'News', 'Images', 'Videos', 'Maps'];
 
-function stripHtml(value = '') {
-  return value.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+function flattenTopics(topics = []) {
+  return topics.flatMap((topic) => (topic.Topics ? flattenTopics(topic.Topics) : [topic]));
 }
 
 export default function HomePage() {
@@ -19,7 +19,6 @@ export default function HomePage() {
   const handleSearch = async (event) => {
     event.preventDefault();
     const searchTerm = query.trim();
-
     if (!searchTerm) {
       setError('Please enter a search term.');
       return;
@@ -27,23 +26,34 @@ export default function HomePage() {
 
     setLoading(true);
     setError('');
+    setResults([]);
+    setAnswer('');
+    setAnswerUrl('');
 
     try {
-      const response = await fetch(`/api/search?q=${encodeURIComponent(searchTerm)}`);
+      const endpoint = `https://api.duckduckgo.com/?q=${encodeURIComponent(searchTerm)}&format=json&no_html=1&skip_disambig=1`;
+      const response = await fetch(endpoint);
+      if (!response.ok) throw new Error('The search service is unavailable.');
+
       const data = await response.json();
+      const topics = flattenTopics(data.RelatedTopics || [])
+        .filter((item) => item.Text && item.FirstURL)
+        .slice(0, 12)
+        .map((item) => ({
+          title: item.Text.split(' - ')[0],
+          snippet: item.Text,
+          url: item.FirstURL,
+        }));
 
-      if (!response.ok) {
-        throw new Error(data.error || 'Search failed');
+      setAnswer(data.AbstractText || '');
+      setAnswerUrl(data.AbstractURL || '');
+      setResults(topics);
+
+      if (!data.AbstractText && topics.length === 0) {
+        setError('No instant results were found. Try a more specific search.');
       }
-
-      setResults(data.results || []);
-      setAnswer(data.answer || '');
-      setAnswerUrl(data.answerUrl || '');
     } catch (err) {
-      setError(err.message || 'Something went wrong.');
-      setResults([]);
-      setAnswer('');
-      setAnswerUrl('');
+      setError(err.message || 'Something went wrong while searching.');
     } finally {
       setLoading(false);
     }
@@ -76,7 +86,7 @@ export default function HomePage() {
             <input
               type="text"
               value={query}
-              onChange={(e) => setQuery(e.target.value)}
+              onChange={(event) => setQuery(event.target.value)}
               aria-label="Search"
               placeholder="Search the web"
             />
@@ -88,13 +98,21 @@ export default function HomePage() {
             <button type="submit" disabled={loading}>
               {loading ? 'Searching…' : 'Google Search'}
             </button>
-            <button type="button">I&apos;m Feeling Lucky</button>
+            <button
+              type="button"
+              onClick={() =>
+                query &&
+                window.open(`https://duckduckgo.com/?q=${encodeURIComponent(query)}`, '_blank')
+              }
+            >
+              I&apos;m Feeling Lucky
+            </button>
           </div>
         </form>
 
         <div className="quick-links">
           {quickLinks.map((link) => (
-            <button key={link} type="button" className="quick-link">
+            <button key={link} type="button" className="quick-link" onClick={() => setQuery(link)}>
               {link}
             </button>
           ))}
@@ -103,25 +121,23 @@ export default function HomePage() {
 
       <section className="results-panel">
         {error && <div className="error-box">{error}</div>}
-
         {answer && (
           <article className="answer-box">
             <div className="answer-label">Answer</div>
-            <h2>{stripHtml(answer)}</h2>
+            <h2>{answer}</h2>
             {answerUrl && (
               <a href={answerUrl} target="_blank" rel="noreferrer">
-                {answerUrl}
+                Read more
               </a>
             )}
           </article>
         )}
-
         {results.length > 0 && (
           <div className="results-list">
             {results.map((item, index) => (
               <article className="result-item" key={`${item.url}-${index}`}>
-                <div className="result-url">{item.url}</div>
-                <a href={item.url} target="_blank" rel="noreferrer" className="result-title">
+                <div className=\"result-url\">{item.url}</div>
+                <a href={item.url} target=\"_blank\" rel=\"noreferrer\" className=\"result-title\">
                   {item.title}
                 </a>
                 <p>{item.snippet}</p>
